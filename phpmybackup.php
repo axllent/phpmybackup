@@ -19,19 +19,6 @@
 	25/04/2010 - 0.3 - Add UFT-8 encoding for MySQL connection & file writing
 */
 
-$db = new MYSQL_DUMP;
-$db->dbhost = 'server.com';
-$db->dbuser = 'backup';
-$db->dbpwd = '876$#J$G_';
-//~ $db->showDebug = true;
-$db->backupDir = '/home/ralph/backups/';
-$db->ignoreList = array('test');
-$db->emptyList = array(
-	'mydb.large_table',
-	'another_db.tablename'
-);
-$db->dumpDatabases();
-
 class MYSQL_DUMP{
 	var $dbhost = "";
 	var $dbuser = "";

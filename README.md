@@ -27,6 +27,6 @@ Usage
 
 Requirements
 -----------------
-- A MySQL user on the server with SELECT & LOCK_TABLES permissions
+- A MySQL user on the server with 'SELECT' & 'LOCK TABLES' permissions
 - tar with bzip2 support
 - PHP CLI on backup host with MySQL support
