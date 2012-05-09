@@ -23,7 +23,7 @@ Usage
 
 - The above command will dump all databases except for 'test' from server.com
 - The data from two tables, large_table1 & large_table2, (found in database largedb) will be ignored, however the table structure will be backed up. This is especially handy if you have temporary tables or large tables which contain unimportant data.
-- A total of 30-days of backups will be kept. **Note**: Backups are named by date (yyyy-mm-dd.tar.gz), so a maximum of 1 backup per day can be kept. If the script is re-run on the same day, the repository if synced and the existing daily backup overwritten.
+- A total of 30-days of backups will be kept. **Note**: Backups are named by date (yyyy-mm-dd.tar.gz), so a maximum of 1 backup per day can be kept. If the script is re-run on the same day, the repository is synced and the existing daily backup overwritten.
 
 Requirements
 -----------------
