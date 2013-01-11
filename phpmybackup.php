@@ -270,7 +270,7 @@ class MYSQL_DUMP{
 			$viewsql = '';
 			$standardsql = '';
 			while ($file = readdir($dir_handle)) {
-				if ( preg_match('/^([a-z0-9_]+)\.([0-9]+)\.([a-z0-9]+)\.sql/', $file, $sqlmatch) ){
+				if ( preg_match('/^([a-z0-9_]+)\.([0-9]+)\.([a-z0-9]+)\.sql/i', $file, $sqlmatch) ){
 					if ($sqlmatch[3]== 'view'){
 						if ($this->dropTables) $returnSql .= 'DROP VIEW IF EXISTS `'.$sqlmatch[1].'`;'.$this->lineEnd.$this->lineEnd;
 						$viewsql .= file_get_contents($this->backupRepository.'/'.$db.'/'.$file);
