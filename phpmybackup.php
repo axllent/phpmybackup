@@ -211,7 +211,8 @@ class MYSQL_DUMP{
 					/* Make sure only complete files get saved */
 					rename($temp, $this->dumpDir.'/'.$row['Name'].'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql');
 					/* Set the file timestamp if supported */
-					@touch($this->dumpDir.'/'.$row['Name'].'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql', strtotime($row['Update_time']));
+					if(!is_null($row['Update_time']))
+						@touch($this->dumpDir.'/'.$row['Name'].'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql', strtotime($row['Update_time']));
 				}
 
 			}
