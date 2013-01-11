@@ -1,32 +1,65 @@
-PHPMyBackup
-========
-**A PHP MySQL differential backup script**
+PHPMyBackup - A PHP MySQL differential backup script
+====================================================
 
-PHPMyBackup is a PHP script designed for backing up an entire MySQL server. What makes it unique is it only uses use **differential** methods to dump only the changes as it keeps a local repository of all the synced databases & tables.
+A PHP MySQL differential backup script
+--------------------------------------
 
-Usage
--------
-    require('/path/to/phpmybackup.php');
-    $db = new MYSQL_DUMP;
-    $db->dbhost     = 'server.com';
-    $db->dbuser     = 'backup-user';
-    $db->dbpwd      = 'backup-password';
-    $db->backupsToKeep = 30;
-    $db->showDebug  = false;
-    $db->backupDir  = '/home/ralph/backups/';
-    $db->ignoreList = array('test');
-    $db->emptyList  = array(
-        'largedb.large_table1',
-        'largedb.large_table2'
-    );
-    $db->dumpDatabases();
+PHPMyBackup is a PHP script designed for backing up an entire MySQL
+server on the commandline. What makes it unique is it only uses use
+**differential** methods to dump only the changes as it keeps a local
+copy of all the synced databases & tables.
 
-- The above command will dump all databases except for 'test' from server.com
-- The data from two tables, large_table1 & large_table2, (found in database largedb) will be ignored, however the table structure will be backed up. This is especially handy if you have temporary tables or large tables which contain unimportant data.
-- A total of 30-days of backups will be kept. **Note**: Backups are named by date (yyyy-mm-dd.tar.gz), so a maximum of 1 backup per day can be kept. If the script is re-run on the same day, the repository is synced and the existing daily backup overwritten.
+Software features
+-----------------
+
+-   Only download changed/altered tables (checksum)
+-   Allows skipping of specified tables from backups
+-   Allows skipping of specified table-data (ie: only empty table
+    structure is saved)
+-   Integrates with \`mysqldump\` for actual sql dumps
+-   Backup archive rotation
+
+Limitations
+-----------
+
+-   No database locking during backup. because a separate \`mysqldump\`
+    is called for every table download, only table locking is used.
+-   Tables with no data (either empty or manually specified) do not
+    contain a checksum, so a new backups of table structure is always
+    made (extremely small).
+-   This has been tested in several environments, but your own full
+    testing is always advised!
 
 Requirements
------------------
-- A MySQL user on the server with 'SELECT' & 'LOCK TABLES' permissions
-- tar with bzip2 support
-- PHP CLI on backup host with MySQL support
+------------
+
+-   A MySQL user on the server with ‘SELECT’ & ‘LOCK TABLES’ permissions
+-   \`tar\` with bzip2 support (used for compressing backups)
+-   PHP CLI on backup host with MySQL support
+-   \`mysqldump\` (used for actual table dumping)
+
+Usage
+-----
+
+    require('/path/to/phpmybackup.php');
+    $db = new MYSQL_DUMP;
+    $db->dbhost = 'server.com';
+    $db->dbuser = 'backup-user';
+    $db->dbpwd = 'backup-password';
+    $db->backupsToKeep = 30;
+    $db->showDebug = false;
+    $db->backupDir = '/mnt/backups/mysql/';
+    $db->ignoreList = array('test','unimportant_db');
+    $db->emptyList = array('largedb.large_table1','largedb.cachetable');
+    $db->dumpDatabases();
+
+-   The above command will dump all databases except for ‘test’ and
+    ‘unimportant\_db’ from server.com
+-   The data from two tables, large\_table1 & cachetable, (found in
+    database largedb) will be ignored, however the table structure will
+    be backed up. This is especially handy if you have temporary tables
+    or large tables which contain unimportant / cached data.
+-   A total of 30-days of backups will be kept. **Note**: Backups are
+    named by date (yyyy-mm-dd.tar.bz2), so a maximum of 1 backup per day
+    can be kept. If the script is re-run on the same day, the repository
+    if synced and the existing daily backup overwritten.
