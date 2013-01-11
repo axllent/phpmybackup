@@ -3,7 +3,7 @@
 	MySQL dumper for tables / databases
 	Version: 0.7
 	Author: Ralph Slooten
-	Website: http://www.technojoy.co.nz/
+	Website: http://www.axllent.org/
 	------------------------------------------------------------------------
 	License: Distributed under the Lesser General Public License (LGPL)
 		http://www.gnu.org/copyleft/lesser.html
