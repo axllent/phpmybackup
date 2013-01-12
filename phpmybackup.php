@@ -1,7 +1,6 @@
 <?php
 /*
 	MySQL dumper for tables / databases
-	Version: 0.7
 	Author: Ralph Slooten
 	Website: http://www.axllent.org/
 	------------------------------------------------------------------------
@@ -12,6 +11,7 @@
 	FITNESS FOR A PARTICULAR PURPOSE.
 	------------------------------------------------------------------------
 	Changelog:
+	12/01/2013 - 0.8 - Wildcard support	
 	11/01/2013 - 0.7 - Switch to using mysqldump client
 	12/11/2011 - 0.6 - Add bin2hex option (default) for blob fields
 	04/02/2011 - 0.5 - Table caching (local copy)
@@ -20,12 +20,29 @@
 */
 
 class MYSQL_DUMP{
-	var $dbhost = "";
-	var $dbuser = "";
-	var $dbpwd = "";
+	var $dbhost = ""; // MySQL Host
+	var $dbuser = ""; // MySQL Username
+	var $dbpwd = ""; // MySQL password
 	var $conflags = 'MYSQL_CLIENT_COMPRESS';
-	var $ignoreList = array();
-	var $emptyList = array();
+	/*
+	 * Array of database names to ignore (supports wildcards)
+	 * Completely ignored database and all it's tables
+	 * eg: array('database1', test*')
+	*/
+	var $ignoreDatabases = array();
+	/*
+	 * Array of complete tables to ignore (includes database names - supports wildcards)
+	 * Format must include database "table.database"
+	 * eg: array('database1.mytable', 'test.ignore*')
+	*/
+	var $ignoreTables = array();
+	/*
+	 * Array of tables to ignore data (includes database names - supports wildcards)
+	 * Table structure will be backed up, but no data
+	 * Format must include database "table.database"
+	 * eg: array('database1.mytable', 'test.ignore*')
+	*/
+	var $emptyTables = array(); // array of tables to dump only structure and no data (includes database names - supports wildcards)
 	var $showDebug = false;
 	var $dropTables = true;
 	var $hex4blob = true;
@@ -47,7 +64,7 @@ class MYSQL_DUMP{
 		$this->liveDatabases = array();
 
 		$this->con = mysql_connect($this->dbhost, $this->dbuser, $this->dbpwd, $this->conflags);
-		if (!$this->con) { $this->errorMessage('Cannot connect to '.$this->dbhost); return false;}
+		if (!$this->con) {$this->errorMessage('Cannot connect to '.$this->dbhost); return false;}
 		$utf = $this->db_query('SET NAMES utf8');
 
 		if (!is_dir($this->backupDir) || !is_writable($this->backupDir)) {
@@ -67,7 +84,7 @@ class MYSQL_DUMP{
 		if (is_dir($this->backupDir.'/'.$this->backupFormat)) $this->recursive_remove_directory($this->backupDir.'/'.$this->backupFormat);
 
 
-		$this->header  = '-- PHP-MySql Dump v0.7'.$this->lineEnd ;
+		$this->header  = '-- PHP-MySql Dump v0.8'.$this->lineEnd ;
 		$this->header .= '-- Host: '.$this->dbhost.$this->lineEnd;
 		$this->header .= '-- Date: '.date('F j, Y, g:i a').$this->lineEnd;
 		$this->header .= '-- -------------------------------------------------'.$this->lineEnd;
@@ -87,12 +104,28 @@ class MYSQL_DUMP{
 		$this->header .= '/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE=\'NO_AUTO_VALUE_ON_ZERO\' */;'.$this->lineEnd;
 		$this->header .= '/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;'.$this->lineEnd;
 
-		array_push($this->ignoreList, 'information_schema');
-		array_push($this->emptyList, 'mysql.general_log');
-		array_push($this->emptyList, 'mysql.slow_log');
+		array_push($this->ignoreDatabases, 'information_schema');
+		array_push($this->emptyTables, 'mysql.general_log');
+		array_push($this->emptyTables, 'mysql.slow_log');
+
+		$tmp = array();
+		foreach ($this->emptyTables as $e)
+			array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
+		$this->emptyTables = '('.implode($tmp, '|').')';
+
+		$tmp = array();
+		foreach ($this->ignoreTables as $e)
+			array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
+		$this->ignoreTables = '('.implode($tmp, '|').')';
+
+		$tmp = array();
+		foreach ($this->ignoreDatabases as $e)
+			array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
+		$this->ignoreDatabases = '('.implode($tmp, '|').')';
+
 		$q = $this->db_query('SHOW DATABASES');
 		while ($row = mysql_fetch_array($q)) {
-			if (in_array($row[0], $this->ignoreList)) {
+			if (preg_match('/^'.$this->ignoreDatabases.'$/', $row[0])) {
 				$this->debug('- Ignoring database '.$row[0]);
 				if (is_dir($this->backupRepository.'/'.$row[0])) {// Remove reposity copy of excluded databases if any
 					$this->debug('- found old repository of '.$row[0].' - deleting');
@@ -141,23 +174,20 @@ class MYSQL_DUMP{
 		if (!$d) { $this->errorMessage('Cannot open database `'.$db.'`'); return false;}
 		$tbls = $this->db_query('SHOW TABLE STATUS FROM `'.$db.'`');
 		$existingDBs = array();
+
 		while ($row = mysql_fetch_array($tbls)) {
 			$tblName = $row['Name'];
 			$tblUpdate = $row['Update_time'];
 
 			$cssql = $this->db_query('CHECKSUM TABLE `'.$tblName.'`');
-			while ($csrow = mysql_fetch_assoc($cssql))
-				$tblChecksum = $csrow['Checksum'];
 
-			if ($tblChecksum == NULL
-			 || in_array($db.'.'.$tblName, $this->emptyList) || in_array('*.'.$tblName, $this->emptyList))
-				$tblChecksum = 0;
+			while ($csrow = mysql_fetch_assoc($cssql)) $tblChecksum = $csrow['Checksum'];
 
-			if ($row['Engine'] == NULL)
-				$row['Engine'] = 'View';
+			if ($tblChecksum == NULL || preg_match('/^'.$this->emptyTables.'$/', $db.'.'.$tblName)) $tblChecksum = 0;
 
-			if (in_array($db.'.'.$tblName, $this->ignoreList) || in_array('*.'.$tblName, $this->emptyList))
-				$this->debug('- Ignoring table '.$db.'.'.$tblName);
+			if ($row['Engine'] == NULL) $row['Engine'] = 'View';
+
+			if (preg_match('/^'.$this->ignoreTables.'$/',$db.'.'.$tblName)) $this->debug('- Ignoring table '.$db.'.'.$tblName);
 
 			elseif ($tblChecksum != 0 && is_file($this->dumpDir.'/'.$tblName.'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql')) {
 				$this->debug('- Repo version of '.$db.'.'.$tblName.' is current ('.$row['Engine'].')');
@@ -175,19 +205,16 @@ class MYSQL_DUMP{
 					'--compact' // no need to database info for every table
 				);
 
-				if ($this->hex4blob)
-					array_push($dump_options, '--hex-blob');
+				if ($this->hex4blob) array_push($dump_options, '--hex-blob');
 
-				if (!$this->dropTables)
-					array_push($dump_options, '--skip-add-drop-table');
+				if (!$this->dropTables) array_push($dump_options, '--skip-add-drop-table');
 
 				if (strtolower($row['Engine']) == 'csv') {
 					$this->debug('- Skipping table locks for CSV table '.$db.'.'.$tblName);
 					array_push($dump_options, '--skip-lock-tables');
 				}
 
-				if ( in_array($db.'.'.$tblName, $this->emptyList) ||
-						in_array('*.'.$tblName, $this->emptyList)) {
+				if (preg_match('/^'.$this->emptyTables.'$/', $db.'.'.$tblName)) {
 					$this->debug('- Ignoring data for '.$db.'.'.$tblName);
 					array_push($dump_options, '--no-data');
 				}
