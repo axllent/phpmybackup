@@ -13,11 +13,10 @@ Software features
 -----------------
 
 -   Only download changed/altered tables (checksum)
--   Allows skipping of specified tables from backups
--   Allows skipping of specified table-data (ie: only empty table
-    structure is saved)
--   Integrates with \`mysqldump\` for actual sql dumps
--   Backup archive rotation
+-   Allows skipping of specified databases from backups (supports wildcard)
+-   Allows skipping of specified tables or table-data (supports wildcard)
+-   Integrates with \`mysqldump\` client for individual sql dumps
+-   Backup rotation
 
 Limitations
 -----------
