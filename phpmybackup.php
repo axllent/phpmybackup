@@ -55,6 +55,7 @@ class MYSQL_DUMP{
 	var $timezone = 'Pacific/Auckland';
 	var $tar_binary = '/bin/tar';
 	var $mysqldump_binary = '/usr/bin/mysqldump';
+	var $savePermissions = 0664; // Save files with the following permissions
 
 	public function dumpDatabases() {
 		date_default_timezone_set($this->timezone);
@@ -156,6 +157,7 @@ class MYSQL_DUMP{
 
 		$this->debug('Compressing backups');
 		exec('cd '.$this->backupDir.' ; '.$this->tar_binary.' -jcf '.$this->backupDir.'/'.$this->backupFormat.'.tar.bz2 '.$this->backupFormat.' > /dev/null');
+		chmod($this->backupDir.'/'.$this->backupFormat.'.tar.bz2', $this->savePermissions);
 		if (!$this->recursive_remove_directory($this->backupDir.'/'.$this->backupFormat)) {
 			$this->errorMessage('Cannot delete the directory '.$this->backupDir.'/'.$this->backupFormat);
 			return false;
@@ -197,6 +199,7 @@ class MYSQL_DUMP{
 			else {
 				array_push($this->liveDatabases[$db], $tblName.'.'.$tblChecksum.'.'.strtolower($row['Engine'])); // For later check & delete of missing ones
 				$this->debug('+ Backing up new version of '.$db.'.'.$tblName.' ('.$row['Engine'].')');
+
 				$dump_options = array(
 					'-C', // Compress connection
 					'-h'.$this->dbhost, // Host
@@ -236,6 +239,7 @@ class MYSQL_DUMP{
 				}
 				else {
 					/* Make sure only complete files get saved */
+					chmod($temp, $this->savePermissions);
 					rename($temp, $this->dumpDir.'/'.$row['Name'].'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql');
 					/* Set the file timestamp if supported */
 					if(!is_null($row['Update_time']))
