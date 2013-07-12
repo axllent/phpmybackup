@@ -61,4 +61,4 @@ Usage
 -   A total of 30-days of backups will be kept. **Note**: Backups are
     named by date (yyyy-mm-dd.tar.bz2), so a maximum of 1 backup per day
     can be kept. If the script is re-run on the same day, the repository
-    if synced and the existing daily backup overwritten.
+    is synced and the existing daily backup overwritten.
