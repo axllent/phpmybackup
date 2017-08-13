@@ -177,8 +177,8 @@ class MYSQL_DUMP
         $this->generateDbDumps();
 
         $this->debug('Compressing backups');
-        exec('cd '.$this->backupDir.' ; '.$this->tar_binary.' -jcf '.$this->backupDir.'/'.$this->backupFormat.'.tar.bz2 '.$this->backupFormat.' > /dev/null');
-        chmod($this->backupDir.'/'.$this->backupFormat.'.tar.bz2', $this->savePermissions);
+        exec('cd '.$this->backupDir.' ; '.$this->tar_binary.' -Jcf '.$this->backupDir.'/'.$this->backupFormat.'.tar.xz '.$this->backupFormat.' > /dev/null');
+        chmod($this->backupDir.'/'.$this->backupFormat.'.tar.xz', $this->savePermissions);
         if (!$this->recursive_remove_directory($this->backupDir.'/'.$this->backupFormat)) {
             $this->errorMessage('Cannot delete the directory '.$this->backupDir.'/'.$this->backupFormat);
             return false;
