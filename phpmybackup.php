@@ -11,6 +11,7 @@
     FITNESS FOR A PARTICULAR PURPOSE.
     ------------------------------------------------------------------------
     Changelog:
+    13/08/2017 - 0.9 - PSR2, password via env
     12/01/2013 - 0.8 - Wildcard support
     11/01/2013 - 0.7 - Switch to using mysqldump client
     12/11/2011 - 0.6 - Add bin2hex option (default) for blob fields
@@ -21,28 +22,32 @@
 
 class MYSQL_DUMP
 {
-    public $dbhost = ''; // MySQL Host
-    public $dbuser = ''; // MySQL Username
+    public $dbhost = ''; // MySQL host
+    public $dbuser = ''; // MySQL username
     public $dbpwd = ''; // MySQL password
     public $conflags = 'MYSQL_CLIENT_COMPRESS';
+
     /*
      * Array of database names to ignore (supports wildcards)
      * Completely ignored database and all it's tables
      * eg: array('database1', test*')
     */
     public $ignoreDatabases = array();
+
     /*
      * Array of complete tables to ignore (includes database names - supports wildcards)
      * Format must include database "table.database"
      * eg: array('database1.mytable', 'test.ignore*')
     */
     public $ignoreTables = array();
+
     /*
      * Array of tables to ignore data (includes database names - supports wildcards)
      * Table structure will be backed up, but no data
      * Format must include database "table.database"
      * eg: array('database1.mytable', 'test.ignore*')
     */
+
     public $emptyTables = array(); // array of tables to dump only structure and no data (includes database names - supports wildcards)
     public $showDebug = false;
     public $dropTables = true;
@@ -67,6 +72,8 @@ class MYSQL_DUMP
             $this->backupRepository = $this->backupDir.'/repo';
         }
         $this->liveDatabases = array();
+
+        passthru('export MYSQL_PWD="' . $this->dbpwd . '"');
 
         $this->con = mysql_connect($this->dbhost, $this->dbuser, $this->dbpwd, $this->conflags);
         if (!$this->con) {
@@ -225,9 +232,8 @@ class MYSQL_DUMP
 
                 $dump_options = array(
                     '-C', // Compress connection
-                    '-h'.$this->dbhost, // Host
-                    '-u'.$this->dbuser, // User
-                    '-p'.$this->dbpwd, // Password
+                    '-h'.$this->dbhost, // host
+                    '-u'.$this->dbuser, // user
                     '--compact' // no need for database info for every table
                 );
 
@@ -256,6 +262,8 @@ class MYSQL_DUMP
                 }
 
                 $temp = tempnam(sys_get_temp_dir(), 'sqlbackup-');
+
+                putenv('MYSQL_PWD='.$this->dbpwd);
 
                 $exec = passthru($this->mysqldump_binary.' '.implode($dump_options, ' ').' '.$db.' '.$tblName.' > '.$temp);
                 if ($exec != '') {
