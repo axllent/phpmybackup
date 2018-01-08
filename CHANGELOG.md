@@ -6,7 +6,7 @@ Notable changes to this project will be documented in this file.
 
 - Switch to MYSQLi
 - Support for empty tables. `SHOW TABLE CREATE` checksum is now used in the repository
-- Support for specifying a subset of databases to back up (suports wildcards)
+- Support for specifying a subset of databases to back up (supports wildcards)
 - Update docs & license
 
 
