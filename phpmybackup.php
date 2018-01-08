@@ -1,54 +1,43 @@
 <?php
-/*
-    MySQL dumper for tables / databases
-    Author: Ralph Slooten
-    Website: http://www.axllent.org/
-    ------------------------------------------------------------------------
-    License: Distributed under the Lesser General Public License (LGPL)
-        http://www.gnu.org/copyleft/lesser.html
-    This program is distributed in the hope that it will be useful - WITHOUT
-    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-    FITNESS FOR A PARTICULAR PURPOSE.
-    ------------------------------------------------------------------------
-    Changelog:
-    13/08/2017 - 0.9 - PSR2, password via env
-    12/01/2013 - 0.8 - Wildcard support
-    11/01/2013 - 0.7 - Switch to using mysqldump client
-    12/11/2011 - 0.6 - Add bin2hex option (default) for blob fields
-    04/02/2011 - 0.5 - Table caching (local copy)
-    18/10/2010 - 0.4 - Fix bug where unescaped table names potentially caused issues (`Group`)
-    25/04/2010 - 0.3 - Add UFT-8 encoding for MySQL connection & file writing
-*/
+/**
+ * MySQL dumper for tables / databases
+ */
 
 class MYSQL_DUMP
 {
     public $dbhost = ''; // MySQL host
     public $dbuser = ''; // MySQL username
     public $dbpwd = ''; // MySQL password
-    public $conflags = 'MYSQL_CLIENT_COMPRESS';
+
+    /*
+     * Array of database names to back up (supports wildcards)
+     * Defaults to all
+     * eg: ['database1', test*']
+    */
+    public $includeDatabases = ['*'];
 
     /*
      * Array of database names to ignore (supports wildcards)
-     * Completely ignored database and all it's tables
-     * eg: array('database1', test*')
+     * Completely ignores database and all it's tables
+     * eg: ['database1', test*']
     */
-    public $ignoreDatabases = array();
+    public $ignoreDatabases = [];
 
     /*
      * Array of complete tables to ignore (includes database names - supports wildcards)
      * Format must include database "table.database"
-     * eg: array('database1.mytable', 'test.ignore*')
+     * eg: ['database1.mytable', 'test.ignore*']
     */
-    public $ignoreTables = array();
+    public $ignoreTables = [];
 
     /*
      * Array of tables to ignore data (includes database names - supports wildcards)
      * Table structure will be backed up, but no data
      * Format must include database "table.database"
-     * eg: array('database1.mytable', 'test.ignore*')
+     * eg: ['database1.mytable', 'test.ignore*']
     */
+    public $emptyTables = [];
 
-    public $emptyTables = array(); // array of tables to dump only structure and no data (includes database names - supports wildcards)
     public $showDebug = false;
     public $dropTables = true;
     public $hex4blob = true;
@@ -65,110 +54,124 @@ class MYSQL_DUMP
 
     public function dumpDatabases()
     {
+        if (!function_exists('mysqli_connect')) {
+            $this->errorMessage('Your PHP has no mysqli support, existing.');
+            return false;
+        }
+
         date_default_timezone_set($this->timezone);
         $this->backupFormat = date('Y-m-d');
         $this->backupDir = rtrim($this->backupDir, '/');
         if (!$this->backupRepository) {
-            $this->backupRepository = $this->backupDir.'/repo';
+            $this->backupRepository = $this->backupDir . '/repo';
         }
-        $this->liveDatabases = array();
+        $this->liveDatabases = [];
 
+        // Export MySQL password
         passthru('export MYSQL_PWD="' . $this->dbpwd . '"');
 
-        $this->con = mysql_connect($this->dbhost, $this->dbuser, $this->dbpwd, $this->conflags);
-        if (!$this->con) {
-            $this->errorMessage('Cannot connect to '.$this->dbhost);
+        $this->con = new mysqli($this->dbhost, $this->dbuser, $this->dbpwd);
+        if ($this->con->connect_errno) {
+            $this->errorMessage('Cannot connect to ' . $this->dbhost . ' (' . $this->con->connect_error);
             return false;
         }
         $utf = $this->db_query('SET NAMES utf8');
 
         if (!is_dir($this->backupDir) || !is_writable($this->backupDir)) {
-            $this->errorMessage('The temporary directory you have configured ('.$this->backupDir.') is either non existant or not writable');
+            $this->errorMessage('The temporary directory you have configured (' . $this->backupDir . ') is either non existant or not writable');
             return false;
         }
 
         if (!is_dir($this->backupRepository)) {
             $mr = @mkdir($this->backupRepository, 0755, true);
             if (!$mr) {
-                $this->errorMessage('Cannot create the Repository '.$this->backupRepository);
+                $this->errorMessage('Cannot create the Repository ' . $this->backupRepository);
                 return false;
             }
         }
+
         if (!is_writable($this->backupRepository)) {
-            $this->errorMessage('Cannot write to Repository '.$this->backupRepository);
+            $this->errorMessage('Cannot write to Repository ' . $this->backupRepository);
             return false;
         }
 
-        if (is_dir($this->backupDir.'/'.$this->backupFormat)) {
-            $this->recursive_remove_directory($this->backupDir.'/'.$this->backupFormat);
+        if (is_dir($this->backupDir . '/' . $this->backupFormat)) {
+            $this->recursive_remove_directory($this->backupDir . '/' . $this->backupFormat);
         }
 
-
-        $this->header  = '-- PHP-MySql Dump v0.8'.$this->lineEnd ;
-        $this->header .= '-- Host: '.$this->dbhost.$this->lineEnd;
-        $this->header .= '-- Date: '.date('F j, Y, g:i a').$this->lineEnd;
-        $this->header .= '-- -------------------------------------------------'.$this->lineEnd;
+        $this->header  = '-- PHP-MySql Dump' . $this->lineEnd ;
+        $this->header .= '-- Host: ' . $this->dbhost . $this->lineEnd;
+        $this->header .= '-- Date: ' . date('F j, Y, g:i a') . $this->lineEnd;
+        $this->header .= '-- -------------------------------------------------' . $this->lineEnd;
 
         $sql = $this->db_query('SELECT VERSION()');
-        $row = mysql_fetch_array($sql);
-        $this->header .= '-- Server version '.$row[0].$this->lineEnd.$this->lineEnd;
+        $row = $sql->fetch_array(MYSQLI_NUM);
+        $this->header .= '-- Server version ' . $row[0] . $this->lineEnd . $this->lineEnd;
 
-        $this->header .= '/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;'.$this->lineEnd;
-        $this->header .= '/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;'.$this->lineEnd;
-        $this->header .= '/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;'.$this->lineEnd;
-        $this->header .= '/*!40101 SET NAMES utf8 */;'.$this->lineEnd;
-        $this->header .= '/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;'.$this->lineEnd;
-        $this->header .= '/*!40103 SET TIME_ZONE=\'+00:00\' */;'.$this->lineEnd;
-        $this->header .= '/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;'.$this->lineEnd;
-        $this->header .= '/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;'.$this->lineEnd;
-        $this->header .= '/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE=\'NO_AUTO_VALUE_ON_ZERO\' */;'.$this->lineEnd;
-        $this->header .= '/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;'.$this->lineEnd;
+        $this->header .= '/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;' . $this->lineEnd;
+        $this->header .= '/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;' . $this->lineEnd;
+        $this->header .= '/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;' . $this->lineEnd;
+        $this->header .= '/*!40101 SET NAMES utf8 */;' . $this->lineEnd;
+        $this->header .= '/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;' . $this->lineEnd;
+        $this->header .= '/*!40103 SET TIME_ZONE=\'+00:00\' */;' . $this->lineEnd;
+        $this->header .= '/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;' . $this->lineEnd;
+        $this->header .= '/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;' . $this->lineEnd;
+        $this->header .= '/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE=\'NO_AUTO_VALUE_ON_ZERO\' */;' . $this->lineEnd;
+        $this->header .= '/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;' . $this->lineEnd;
 
         array_push($this->ignoreDatabases, 'information_schema');
         array_push($this->emptyTables, 'mysql.general_log');
         array_push($this->emptyTables, 'mysql.slow_log');
 
-        $tmp = array();
+        $tmp = [];
+        foreach ($this->includeDatabases as $e) {
+            array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
+        }
+        $this->includeDatabases = '(' . implode($tmp, '|') . ')';
+
+        $tmp = [];
         foreach ($this->emptyTables as $e) {
             array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
         }
-        $this->emptyTables = '('.implode($tmp, '|').')';
+        $this->emptyTables = '(' . implode($tmp, '|') . ')';
 
-        $tmp = array();
+        $tmp = [];
         foreach ($this->ignoreTables as $e) {
             array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
         }
-        $this->ignoreTables = '('.implode($tmp, '|').')';
+        $this->ignoreTables = '(' . implode($tmp, '|') . ')';
 
-        $tmp = array();
+        $tmp = [];
         foreach ($this->ignoreDatabases as $e) {
             array_push($tmp, str_replace('_STARREDMATCH_', '(.*)', preg_quote(str_replace('*', '_STARREDMATCH_', $e), '/')));
         }
-        $this->ignoreDatabases = '('.implode($tmp, '|').')';
+        $this->ignoreDatabases = '(' . implode($tmp, '|') . ')';
 
         $q = $this->db_query('SHOW DATABASES');
-        while ($row = mysql_fetch_array($q)) {
-            if (preg_match('/^'.$this->ignoreDatabases.'$/', $row[0])) {
-                $this->debug('- Ignoring database '.$row[0]);
-                if (is_dir($this->backupRepository.'/'.$row[0])) {// Remove reposity copy of excluded databases if any
-                    $this->debug('- found old repository of '.$row[0].' - deleting');
-                    $this->recursive_remove_directory($this->backupRepository.'/'.$row[0]);
+        while ($row = $q->fetch_array(MYSQLI_NUM)) {
+            if (preg_match('/^' . $this->includeDatabases . '$/', $row[0])) {
+                if (preg_match('/^' . $this->ignoreDatabases . '$/', $row[0])) {
+                    $this->debug('- Ignoring database ' . $row[0]);
+                    if (is_dir($this->backupRepository . '/' . $row[0])) {// Remove reposity copy of excluded databases if any
+                        $this->debug('- found old repository of ' . $row[0] . ' - deleting');
+                        $this->recursive_remove_directory($this->backupRepository . '/' . $row[0]);
+                    }
+                } else {
+                    $this->liveDatabases[$row[0]] = [];
+                    $this->syncTables($row[0]);
                 }
-            } else {
-                $this->liveDatabases[$row[0]] = array();
-                $this->syncTables($row[0]);
             }
         }
         $this->debug('- Closing MySQL connection');
-        mysql_close();
+        $this->con->close();
 
         /* Now we remove any old databases */
         $dir_handle = @opendir($this->backupRepository) or die("Unable to open $path");
         while ($dir = readdir($dir_handle)) {
             if ($dir!='.' && $dir!='..') {
                 if (!isset($this->liveDatabases[$dir])) {
-                    $this->debug('- Found old database - deleting '.$dir);
-                    $this->recursive_remove_directory($this->backupRepository.'/'.$dir);
+                    $this->debug('- Found old database - deleting ' . $dir);
+                    $this->recursive_remove_directory($this->backupRepository . '/' . $dir);
                 }
             }
         }
@@ -177,10 +180,10 @@ class MYSQL_DUMP
         $this->generateDbDumps();
 
         $this->debug('Compressing backups');
-        exec('cd '.$this->backupDir.' ; '.$this->tar_binary.' -Jcf '.$this->backupDir.'/'.$this->backupFormat.'.tar.xz '.$this->backupFormat.' > /dev/null');
-        chmod($this->backupDir.'/'.$this->backupFormat.'.tar.xz', $this->savePermissions);
-        if (!$this->recursive_remove_directory($this->backupDir.'/'.$this->backupFormat)) {
-            $this->errorMessage('Cannot delete the directory '.$this->backupDir.'/'.$this->backupFormat);
+        exec('cd ' . $this->backupDir . ' ; ' . $this->tar_binary . ' -Jcf ' . $this->backupDir . '/' . $this->backupFormat . '.tar.xz ' . $this->backupFormat . ' > /dev/null');
+        chmod($this->backupDir . '/' . $this->backupFormat . '.tar.xz', $this->savePermissions);
+        if (!$this->recursive_remove_directory($this->backupDir . '/' . $this->backupFormat)) {
+            $this->errorMessage('Cannot delete the directory ' . $this->backupDir . '/' . $this->backupFormat);
             return false;
         }
 
@@ -190,50 +193,56 @@ class MYSQL_DUMP
 
     private function syncTables($db)
     {
-        $this->dumpDir = $this->backupRepository.'/'.$db;
+        $this->dumpDir = $this->backupRepository . '/' . $db;
         if (!is_dir($this->dumpDir)) {
             mkdir($this->dumpDir, 0755);
         }
 
-        $d = @mysql_select_db($db, $this->con);
+        $d = $this->con->select_db($db);
         if (!$d) {
-            $this->errorMessage('Cannot open database `'.$db.'`');
+            $this->errorMessage('Cannot open database `' . $db . '`');
             return false;
         }
-        $tbls = $this->db_query('SHOW TABLE STATUS FROM `'.$db.'`');
-        $existingDBs = array();
+        $tbls = $this->db_query('SHOW TABLE STATUS FROM `' . $db . '`');
+        $existingDBs = [];
 
-        while ($row = mysql_fetch_array($tbls)) {
+        while ($row = $tbls->fetch_array(MYSQLI_ASSOC)) {
             $tblName = $row['Name'];
             $tblUpdate = $row['Update_time'];
 
-            $cssql = $this->db_query('CHECKSUM TABLE `'.$tblName.'`');
+            $cssql = $this->db_query('CHECKSUM TABLE `' . $tblName . '`');
 
-            while ($csrow = mysql_fetch_assoc($cssql)) {
+            while ($csrow = $cssql->fetch_array(MYSQLI_ASSOC)) {
                 $tblChecksum = $csrow['Checksum'];
             }
 
-            if ($tblChecksum == null || preg_match('/^'.$this->emptyTables.'$/', $db.'.'.$tblName)) {
+            if ($tblChecksum == null || preg_match('/^' . $this->emptyTables . '$/', $db . '.' . $tblName)) {
                 $tblChecksum = 0;
+            }
+
+            /* Create create checksum */
+            $create_sql = $this->db_query('SHOW CREATE TABLE `' . $tblName . '`');
+            while ($create = $create_sql->fetch_array(MYSQLI_ASSOC)) {
+                $tblChecksum .= '-' . substr(base_convert(md5($create['Create Table']), 16,32), 0, 12);
             }
 
             if ($row['Engine'] == null) {
                 $row['Engine'] = 'View';
             }
 
-            if (preg_match('/^'.$this->ignoreTables.'$/', $db.'.'.$tblName)) {
-                $this->debug('- Ignoring table '.$db.'.'.$tblName);
-            } elseif ($tblChecksum != 0 && is_file($this->dumpDir.'/'.$tblName.'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql')) {
-                $this->debug('- Repo version of '.$db.'.'.$tblName.' is current ('.$row['Engine'].')');
-                array_push($this->liveDatabases[$db], $tblName.'.'.$tblChecksum.'.'.strtolower($row['Engine']));
+            if (preg_match('/^' . $this->ignoreTables . '$/', $db . '.' . $tblName)) {
+                $this->debug('- Ignoring table ' . $db . '.' . $tblName);
+            } elseif (is_file($this->dumpDir . '/' . $tblName . '.' . $tblChecksum . '.' . strtolower($row['Engine']) . '.sql')) {
+                $this->debug('- Repo version of ' . $db . '.' . $tblName . ' is current (' . $row['Engine'] . ')');
+                array_push($this->liveDatabases[$db], $tblName . '.' . $tblChecksum . '.' . strtolower($row['Engine']));
             } else {
-                array_push($this->liveDatabases[$db], $tblName.'.'.$tblChecksum.'.'.strtolower($row['Engine'])); // For later check & delete of missing ones
-                $this->debug('+ Backing up new version of '.$db.'.'.$tblName.' ('.$row['Engine'].')');
+                array_push($this->liveDatabases[$db], $tblName . '.' . $tblChecksum . '.' . strtolower($row['Engine'])); // For later check & delete of missing ones
+                $this->debug('+ Backing up new version of ' . $db . '.' . $tblName . ' (' . $row['Engine'] . ')');
 
                 $dump_options = array(
                     '-C', // Compress connection
-                    '-h'.$this->dbhost, // host
-                    '-u'.$this->dbuser, // user
+                    '-h' . $this->dbhost, // host
+                    '-u' . $this->dbuser, // user
                     '--compact' // no need for database info for every table
                 );
 
@@ -246,36 +255,36 @@ class MYSQL_DUMP
                 }
 
                 if (strtolower($row['Engine']) == 'csv') {
-                    $this->debug('- Skipping table locks for CSV table '.$db.'.'.$tblName);
+                    $this->debug('- Skipping table locks for CSV table ' . $db . '.' . $tblName);
                     array_push($dump_options, '--skip-lock-tables');
                 }
 
-                if (preg_match('/^'.$this->emptyTables.'$/', $db.'.'.$tblName)) {
-                    $this->debug('- Ignoring data for '.$db.'.'.$tblName);
+                if (preg_match('/^' . $this->emptyTables . '$/', $db . '.' . $tblName)) {
+                    $this->debug('- Ignoring data for ' . $db . '.' . $tblName);
                     array_push($dump_options, '--no-data');
                 } elseif (strtolower($row['Engine']) == 'memory') {
-                    $this->debug('- Ignoring data for Memory table '.$db.'.'.$tblName);
+                    $this->debug('- Ignoring data for Memory table ' . $db . '.' . $tblName);
                     array_push($dump_options, '--no-data');
                 } elseif (strtolower($row['Engine']) == 'view') {
-                    $this->debug('- Ignoring data for View table '.$db.'.'.$tblName);
+                    $this->debug('- Ignoring data for View table ' . $db . '.' . $tblName);
                     array_push($dump_options, '--no-data');
                 }
 
                 $temp = tempnam(sys_get_temp_dir(), 'sqlbackup-');
 
-                putenv('MYSQL_PWD='.$this->dbpwd);
+                putenv('MYSQL_PWD=' . $this->dbpwd);
 
-                $exec = passthru($this->mysqldump_binary.' '.implode($dump_options, ' ').' '.$db.' '.$tblName.' > '.$temp);
+                $exec = passthru($this->mysqldump_binary . ' ' . implode($dump_options, ' ') . ' ' . $db . ' ' . $tblName . ' > ' . $temp);
                 if ($exec != '') {
                     @unlink($temp);
-                    $this->errorMessage('Unable to dump file to '.$temp. ' ' .$exec);
+                    $this->errorMessage('Unable to dump file to ' . $temp . ' ' . $exec);
                 } else {
                     /* Make sure only complete files get saved */
                     chmod($temp, $this->savePermissions);
-                    rename($temp, $this->dumpDir.'/'.$row['Name'].'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql');
+                    rename($temp, $this->dumpDir . '/' . $row['Name'] . '.' . $tblChecksum . '.' . strtolower($row['Engine']) . '.sql');
                     /* Set the file timestamp if supported */
                     if (!is_null($row['Update_time'])) {
-                        @touch($this->dumpDir.'/'.$row['Name'].'.'.$tblChecksum.'.'.strtolower($row['Engine']).'.sql', strtotime($row['Update_time']));
+                        @touch($this->dumpDir . '/' . $row['Name'] . '.' . $tblChecksum . '.' . strtolower($row['Engine']) . '.sql', strtotime($row['Update_time']));
                     }
                 }
             }
@@ -284,10 +293,10 @@ class MYSQL_DUMP
         /* Delete old tables if existing */
         $dir_handle = @opendir($this->dumpDir) or die("Unable to open $path");
         while ($file = readdir($dir_handle)) {
-            if ($file!='.' && $file!='..') {
+            if ($file != '.' && $file != '..') {
                 if (!in_array(substr($file, 0, -4), $this->liveDatabases[$db])) {
-                    $this->debug('- Found old table - deleting '.$file);
-                    unlink($this->dumpDir.'/'.$file);
+                    $this->debug('- Found old table - deleting ' . $file);
+                    unlink($this->dumpDir . '/' . $file);
                 }
             }
         }
@@ -296,13 +305,13 @@ class MYSQL_DUMP
 
     private function generateDbDumps()
     {
-        $mr = @mkdir($this->backupDir.'/'.$this->backupFormat, 0755, true);
+        $mr = @mkdir($this->backupDir . '/' . $this->backupFormat, 0755, true);
         if (!$mr) {
             $this->errorMessage('Cannot create the backup directory '.$this->backupFormat);
             return false;
         }
-        $dirs = array();
-        $dir_handle = @opendir($this->backupRepository) or die('Unable to open '.$this->backupRepository);
+        $dirs = [];
+        $dir_handle = @opendir($this->backupRepository) or die('Unable to open ' . $this->backupRepository);
         while ($file = readdir($dir_handle)) {
             if ($file != '.' && $file != '..') {
                 array_push($dirs, $file);
@@ -314,37 +323,37 @@ class MYSQL_DUMP
         foreach ($dirs as $db) {
             $returnSql = $this->header;
             if ($this->createDatabase) {
-                $returnSql .= '/*!40000 DROP DATABASE IF EXISTS `'.$db.'`*/; '.$this->lineEnd;
-                $returnSql .= 'CREATE DATABASE `'.$db.'`;'.$this->lineEnd.$this->lineEnd;
-                $returnSql .= 'USE `'.$db.'`;'.$this->lineEnd.$this->lineEnd;
+                $returnSql .= '/*!40000 DROP DATABASE IF EXISTS `' . $db . '`*/; ' . $this->lineEnd;
+                $returnSql .= 'CREATE DATABASE `' . $db . '`;' . $this->lineEnd . $this->lineEnd;
+                $returnSql .= 'USE `' . $db . '`;' . $this->lineEnd . $this->lineEnd;
             }
-            $fp = @fopen($this->backupDir.'/'.$this->backupFormat.'/'.$db.'.sql', 'wb');
+            $fp = @fopen($this->backupDir . '/' . $this->backupFormat . '/' . $db . '.sql', 'wb');
             @fwrite($fp, $returnSql);
             @fclose($fp);
 
-            $files = scandir($this->backupRepository.'/'.$db);
+            $files = scandir($this->backupRepository . '/' . $db);
             $viewsql = '';
             $standardsql = '';
-            $sqlfiles = array();
-            $viewfiles = array();
+            $sqlfiles = [];
+            $viewfiles = [];
             foreach ($files as $file) {
-                if (preg_match('/^([a-zA-Z0-9_\-]+)\.([0-9]+)\.([a-z0-9]+)\.sql/', $file, $sqlmatch)) {
+                if (preg_match('/^([a-zA-Z0-9_\-]+)\.([0-9]+)\-([a-z0-9]+)\.([a-z0-9]+)\.sql/', $file, $sqlmatch)) {
                     if ($sqlmatch[3]== 'view') {
-                        array_push($viewfiles, $this->backupRepository.'/'.$db.'/'.$file);
+                        array_push($viewfiles, $this->backupRepository . '/' . $db . '/' . $file);
                     } else {
-                        array_push($sqlfiles, $this->backupRepository.'/'.$db.'/'.$file);
+                        array_push($sqlfiles, $this->backupRepository . '/' . $db . '/' . $file);
                     }
                 }
             }
 
             /* Add all sql dumps in database */
             foreach ($sqlfiles as $f) {
-                $this->chunked_copy_to($f, $this->backupDir.'/'.$this->backupFormat.'/'.$db.'.sql');
+                $this->chunked_copy_to($f, $this->backupDir . '/' . $this->backupFormat . '/' . $db . '.sql');
             }
 
             /* Add View tables after */
             foreach ($viewfiles as $f) {
-                $this->chunked_copy_to($f, $this->backupDir.'/'.$this->backupFormat.'/'.$db.'.sql');
+                $this->chunked_copy_to($f, $this->backupDir . '/' . $this->backupFormat . '/' . $db . '.sql');
             }
         }
     }
@@ -357,7 +366,7 @@ class MYSQL_DUMP
         $fin = fopen($from, 'rb');
         $fout = fopen($to, 'a');
         if (!$fin || !$fout) {
-            die('Unable to copy '.$fin.' to '.$fout);
+            die('Unable to copy ' . $fin . ' to ' . $fout);
         }
         while (!feof($fin)) {
             $ret += fwrite($fout, fread($fin, $buffer_size));
@@ -370,11 +379,11 @@ class MYSQL_DUMP
     /* Rotate backups and delete old ones */
     private function rotateFiles($backup_directory)
     {
-        $filelist = array();
+        $filelist = [];
         if (is_dir($backup_directory)) {
             if ($dh = opendir($backup_directory)) {
                 while (($file = readdir($dh)) !== false) {
-                    if (($file != '.') && ($file != '..') && (filetype($backup_directory.'/'.$file) == 'file')) {
+                    if (($file != '.') && ($file != '..') && (filetype($backup_directory . '/' . $file) == 'file')) {
                         $filelist[] = $file;
                     }
                 }
@@ -383,7 +392,7 @@ class MYSQL_DUMP
                 if (count($filelist) > $this->backupsToKeep) {
                     $too_many = (count($filelist) - $this->backupsToKeep);
                     for ($j=0;$j<$too_many; $j++) {
-                        unlink($backup_directory.'/'.$filelist[$j]);
+                        unlink($backup_directory . '/' . $filelist[$j]);
                     }
                 }
                 unset($filelist); // Uset $filelist[] array
@@ -393,24 +402,24 @@ class MYSQL_DUMP
 
     private function errorMessage($msg)
     {
-        echo $msg.$this->lineEnd;
+        echo $msg . $this->lineEnd;
     }
 
     private function debug($msg)
     {
         if ($this->showDebug) {
-            echo $msg.$this->lineEnd;
+            echo $msg . $this->lineEnd;
         }
     }
 
     private function db_query($query)
     {
-        $result = mysql_query($query);
-        if (!$result) {
-            $this->errorMessage(mysql_error());
+        if ($result = $this->con->query($query)) {
+            return $result;
+        } else {
+            $this->errorMessage($this->con->error);
             return false;
         }
-        return $result;
     }
 
     private function recursive_remove_directory($directory, $empty=false)
@@ -426,7 +435,7 @@ class MYSQL_DUMP
             $handle = opendir($directory);
             while (false !== ($item = readdir($handle))) {
                 if ($item != '.' && $item != '..') {
-                    $path = $directory.'/'.$item;
+                    $path = $directory . '/' . $item;
                     if (is_dir($path)) {
                         $this->recursive_remove_directory($path);
                     } else {
