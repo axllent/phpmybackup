@@ -171,7 +171,7 @@ class MYSQL_DUMP
         // now we remove any old databases
         $dir_handle = @opendir($this->backupRepository) or die("Unable to open $path");
         while ($dir = readdir($dir_handle)) {
-            if ($dir != '.' && $dir != '..' && is_dir($dir)) {
+            if ($dir != '.' && $dir != '..' && is_dir($this->backupRepository . '/'  . $dir)) {
                 if (!isset($this->liveDatabases[$dir])) {
                     $this->debug('- Found old database - deleting ' . $dir);
                     $this->recursive_remove_directory($this->backupRepository . '/' . $dir);
@@ -319,11 +319,13 @@ class MYSQL_DUMP
             $this->errorMessage('Cannot create the backup directory ' . $this->backupFormat);
             return false;
         }
+
         $dirs = [];
+
         $dir_handle = @opendir($this->backupRepository) or die('Unable to open ' . $this->backupRepository);
-        while ($file = readdir($dir_handle)) {
-            if ($file != '.' && $file != '..') {
-                array_push($dirs, $file);
+        while ($dir = readdir($dir_handle)) {
+            if ($dir != '.' && $dir != '..' && is_dir($this->backupRepository . '/' . $dir)) {
+                array_push($dirs, $dir);
             }
         }
 
