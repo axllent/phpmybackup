@@ -1,5 +1,17 @@
+## **Note**: This software has been superseded by a completely different server/client backup called [MyBack](https://github.com/axllent/myback).
+
+MyBack does not require an open MySQL port to the backup sever, and is a 
+far more robust & actively-maintained backup system.
+
+Please consider using MyBack instead, as PHPMyBackup is no longer maintained.
+
+https://github.com/axllent/myback
+
+---
+
 PHPMyBackup - A PHP MySQL differential backup script
 =====================================================
+
 
 A PHP MySQL differential backup script
 ---------------------------------------
@@ -17,7 +29,7 @@ Software features
 -   Allows specifying subset of databases for backups (supports wildcard)
 -   Allows skipping of specified databases from backups (supports wildcard)
 -   Allows skipping of specified tables or table-data (supports wildcard)
--   Integrates with `mysqldump` client for individual sql dumps
+-   Integrates with `mysqldump` client for individual SQL dumps
 -   Backup rotation
 
 
